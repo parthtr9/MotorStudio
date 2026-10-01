@@ -1,0 +1,56 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 1rem;
+  background: #111;
+  color: #eee;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+#joints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.joint-panel {
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 0.75rem;
+  min-width: 220px;
+  background: #1a1a1a;
+}
+
+.feedback {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+}
+
+.feedback dt {
+  color: #999;
+}
+
+#trip-log {
+  margin-top: 1.5rem;
+}
+
+#trip-log-list {
+  font-size: 0.85rem;
+  font-family: monospace;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+button {
+  cursor: pointer;
+}
