@@ -1,7 +1,9 @@
 # Rust
 driver/target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock is committed (not ignored) -- driver/ is an application
+# (the gateway binary lands here in M3), and this harness runs across
+# multiple laptops, so reproducible builds matter. See MACHINE_SETUP.md.
 
 # Python
 spec/__pycache__/
