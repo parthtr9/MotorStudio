@@ -1,0 +1,25 @@
+# Rust
+driver/target/
+**/*.rs.bk
+Cargo.lock
+
+# Python
+spec/__pycache__/
+mcp/__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# TypeScript / Node
+studio/node_modules/
+studio/dist/
+studio/.turbo/
+
+# OS
+.DS_Store
+
+# Build/test artifacts
+*.log
+limits.json

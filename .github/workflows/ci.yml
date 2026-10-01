@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  spec:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: spec
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e . pytest ruff
+      - run: ruff check harness tests
+      - run: python -m pytest -q
+
+  driver:
+    runs-on: ubuntu-24.04
+    if: ${{ hashFiles('driver/Cargo.toml') != '' }}
+    defaults:
+      run:
+        working-directory: driver
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo fmt --check
+      - run: cargo clippy -- -D warnings
+      - run: cargo test
+
+  studio:
+    runs-on: ubuntu-24.04
+    if: ${{ hashFiles('studio/package.json') != '' }}
+    defaults:
+      run:
+        working-directory: studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+
+  vcan-rig:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: make vcan-up
+      - run: make test

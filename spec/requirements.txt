@@ -1,0 +1,5 @@
+pydantic>=2.6
+numpy>=1.26
+pyyaml>=6.0
+click>=8.1
+pytest>=8.0
