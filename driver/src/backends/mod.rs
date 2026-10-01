@@ -8,13 +8,11 @@
 //! backend against unconfirmed protocol data would be exactly the kind
 //! of guessing that rule forbids.
 //!
-//! Planned backends (M1, once unblocked):
-//! - `motorbridge`: wraps the existing `motorbridge` crate/CLI for
-//!   RobStride and Damiao (per the sprint plan's feature evaluation,
-//!   these are "Reuse" targets, not a from-scratch codec).
-//! - `yaml_codec`: a from-scratch codec driven by a `ProtocolProfile`
-//!   (the Python-side schema in `spec/harness/profile_schema.py` has a
-//!   Rust-side equivalent to come), starting with CubeMars MIT mode.
+//! Backends:
+//! - `robstride`: wraps the `motorbridge` project's RobStride vendor
+//!   crate (git-pinned, see driver/Cargo.toml) -- RobStride is a
+//!   "Reuse" target per the sprint plan's feature evaluation.
+//! - `damiao`, `yaml_codec` (CubeMars MIT mode): not yet started.
 //!
 //! A `mock` backend (test-only) exists so the `Backend` trait's contract
 //! -- especially verified-enable -- can be tested without any real
@@ -22,3 +20,4 @@
 
 #[cfg(test)]
 pub mod mock;
+pub mod robstride;

@@ -15,6 +15,19 @@ belong in `CLAUDE.md` (agent rules, should stay machine-agnostic) or
 lives here so a new machine can be brought up without re-deriving any of
 this from scratch or hitting the same bugs again.
 
+## Network access needed for `cargo build`/`cargo test` in driver/
+
+`driver/Cargo.toml` depends on `motor_core` and `motor_vendor_robstride`
+from `https://github.com/motorbridge/motorbridge` (git dependency,
+pinned to a specific commit, not crates.io -- that project doesn't
+publish there). First build on a new machine needs network access to
+clone it; after that it's cached locally like any other git dependency.
+If `motorbridge`'s repo ever disappears or that commit becomes
+unreachable, the pin in `driver/Cargo.toml` is the thing to fix (point
+at a fork/mirror, or vendor the source) -- see that file's comments and
+`driver/src/backends/robstride.rs`'s module doc for why it's pinned
+there at all.
+
 ## Required on every machine
 
 | Tool | Why | Version last verified against |

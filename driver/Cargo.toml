@@ -7,3 +7,17 @@ edition = "2024"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Pinned per the sprint plan's own risk mitigation ("motorbridge changes
+# its API or stalls -> Pin a version"). RobStride is a "Reuse" target
+# per the plan's feature evaluation: motorbridge already implements the
+# wire protocol, so driver/src/backends/robstride.rs wraps it rather
+# than re-deriving frame encodings ourselves. Pinned commit verified by
+# reading its source directly (motor_core is a real library crate, not
+# just a C-ABI/bindings-only project) before depending on it -- see
+# driver/src/backends/robstride.rs's module doc for what was checked.
+motor_core = { git = "https://github.com/motorbridge/motorbridge", rev = "e8b3ac66f73a4a5a82e79c48a1707935ca4c8b96", package = "motor_core" }
+motor_vendor_robstride = { git = "https://github.com/motorbridge/motorbridge", rev = "e8b3ac66f73a4a5a82e79c48a1707935ca4c8b96", package = "motor_vendor_robstride" }
+
+[dev-dependencies]
+motor_core = { git = "https://github.com/motorbridge/motorbridge", rev = "e8b3ac66f73a4a5a82e79c48a1707935ca4c8b96", package = "motor_core", features = ["test-support"] }
