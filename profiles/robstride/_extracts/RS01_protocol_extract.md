@@ -477,3 +477,32 @@ Do not confuse this ID-embedded bitfield's bit numbers (e.g. "bit16" = undervolt
 15. **Table B "Current value (for reference)" column**: several rows show non-integer values for integer-typed fields (e.g. `0X301d phaseOrder` uint8 = "4.363409"; `0X301f boardTemp` int16 = "0.036618"), and several float-typed "current value" numbers look like large raw example readings (e.g. `VBUS` = "11396") rather than physically-scaled units matching the stated unit column. These are reproduced exactly as printed; they may be artifacts of how the host-computer tool's live snapshot was captured into the manual, not authoritative defaults — flagged for caution rather than resolved.
 
 16. **CANopen section does not give raw CAN frame byte layouts** — only the object-dictionary table (index/name/attribute/type/unit) and a state-machine narrative. No raw SDO/PDO frame byte-format was found in the extracted pages (p.63-70), only protocol classification prose (p.63-64) and per-mode object tables (p.65-70). If raw CANopen frame byte layouts exist elsewhere in the PDF (e.g. in an image/diagram), they were not captured by text extraction.
+
+## RESOLUTION (human decision, 2026-10-01)
+
+Item 9 (overtemperature threshold: 103°C vs 145°C) is resolved: these are
+two different sensors, not a conflict. **103°C is the control-board
+(driver) temperature limit; 145°C is the motor winding temperature
+limit.** Both are real, enforced limits for this harness -- 103°C for
+control-board temp, 145°C for winding temp -- not a single value to pick
+between.
+
+One nuance the extract's own text surfaces: the p.46 register is printed
+as "motor overtemperature fault, Default 103°C" -- labeled "motor" but
+carrying the control-board's number. Per this resolution, that register's
+*label* is imprecise (or it is in fact monitoring the control board
+despite the name); its *value* (103°C) is the control-board limit, and
+should be treated as such rather than as a second motor-winding number
+that disagrees with the 145°C at p.31. When `profiles/robstride/rs01_<fw>.yaml`
+is drafted, both limits must be captured as separate fields (e.g.
+`control_board_max_temp_degc: 103`, `winding_max_temp_degc: 145`), each
+`manual_ref`-cited to this resolution plus its source page(s) (p.13/p.46
+for control-board; p.31 for winding) -- not collapsed into one field.
+
+This same control-board-vs-winding distinction likely explains RS06's
+parallel discrepancy (135°C vs 145°C, see `RS06_protocol_extract.md`'s
+own RESOLUTION) differently: RS06's two conflicting numbers were 135°C
+and 145°C, not 103°C and 145°C, so this is NOT assumed to be the same
+pair of sensor values restated -- RS06 keeps its own separately-decided
+135°C resolution. Don't merge or cross-apply these two resolutions
+without re-checking RS06's actual source pages.
