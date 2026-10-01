@@ -1,7 +1,10 @@
-//! The Unix-socket transport for the gateway's network API. One request
-//! per line, one response per line (see `protocol.rs`). A WebSocket
-//! transport is not built yet -- it would reuse `dispatch` unchanged,
-//! only the framing (socket accept + line reading) differs.
+//! The gateway's network API, over two transports sharing one dispatch
+//! function (`dispatch`, taking a parsed `Request` -> `Response`
+//! regardless of which transport it arrived on):
+//! - Unix socket: one JSON request per line, one JSON response per line.
+//! - WebSocket (`serve_ws`): one JSON request per text message, one
+//!   JSON response per text message. This is what Studio (a browser
+//!   app, which can't open a Unix socket) will actually use.
 //!
 //! `GatewayServer` wraps a `GatewayDaemon` behind a `std::sync::Mutex`,
 //! not `tokio::sync::Mutex`: every daemon call is fully synchronous (no
@@ -14,10 +17,12 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
+use tokio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use tokio::task::JoinHandle;
+use tokio_tungstenite::tungstenite::Message;
 
 use crate::backend::Backend;
 
@@ -79,6 +84,58 @@ impl<B: Backend + Send + 'static, E: Enforcer + Send + 'static> GatewayServer<B,
     pub async fn serve_unix(self: Arc<Self>, path: impl AsRef<Path>) -> io::Result<()> {
         let listener = Self::bind_unix(path)?;
         self.serve(listener).await
+    }
+
+    /// Binds a TCP listener for the WebSocket transport, synchronously --
+    /// same reasoning as `bind_unix`.
+    pub fn bind_tcp(addr: impl Into<std::net::SocketAddr>) -> io::Result<std::net::TcpListener> {
+        let listener = std::net::TcpListener::bind(addr.into())?;
+        listener.set_nonblocking(true)?;
+        Ok(listener)
+    }
+
+    /// Accepts WebSocket connections on an already-bound TCP listener
+    /// (see `bind_tcp`) until the process exits or the listener errors.
+    /// This is what Studio connects to -- a browser can't open a Unix
+    /// socket.
+    pub async fn serve_ws(self: Arc<Self>, listener: std::net::TcpListener) -> io::Result<()> {
+        let listener = TcpListener::from_std(listener)?;
+        loop {
+            let (stream, _addr) = listener.accept().await?;
+            let server = Arc::clone(&self);
+            tokio::spawn(async move {
+                let _ = server.handle_ws_connection(stream).await;
+            });
+        }
+    }
+
+    pub async fn handle_ws_connection(&self, stream: TcpStream) -> io::Result<()> {
+        let ws_stream = tokio_tungstenite::accept_async(stream)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        let (mut write_half, mut read_half) = ws_stream.split();
+        while let Some(msg) = read_half.next().await {
+            let msg = msg.map_err(|e| io::Error::other(e.to_string()))?;
+            let text = match msg {
+                Message::Text(text) => text,
+                Message::Close(_) => break,
+                // Ping/Pong/Binary: not a request this protocol defines.
+                // Ignore rather than guess what the client meant.
+                _ => continue,
+            };
+            let response = self.dispatch_line(&text);
+            let out = serde_json::to_string(&response).unwrap_or_else(|_| {
+                serde_json::to_string(
+                    &json!({"ok": false, "error": "internal serialization error"}),
+                )
+                .expect("static fallback value always serializes")
+            });
+            write_half
+                .send(Message::Text(out))
+                .await
+                .map_err(|e| io::Error::other(e.to_string()))?;
+        }
+        Ok(())
     }
 
     pub async fn handle_connection(&self, stream: UnixStream) -> io::Result<()> {
@@ -349,6 +406,79 @@ mod tests {
         server_handle.abort();
     }
 
+    #[tokio::test]
+    async fn end_to_end_over_a_real_bound_websocket() {
+        let dir = tempdir();
+        let server = test_server(dir.path());
+        let listener =
+            GatewayServer::<MockBackend, PassthroughEnforcer>::bind_tcp(([127, 0, 0, 1], 0))
+                .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server_handle = tokio::spawn(Arc::clone(&server).serve_ws(listener));
+
+        let (ws_stream, _resp) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}"))
+            .await
+            .unwrap();
+        let (mut write_half, mut read_half) = ws_stream.split();
+        write_half
+            .send(Message::Text(r#"{"cmd":"status"}"#.into()))
+            .await
+            .unwrap();
+        let msg = read_half.next().await.unwrap().unwrap();
+        let text = match msg {
+            Message::Text(t) => t,
+            other => panic!("expected a text message, got {other:?}"),
+        };
+        let resp: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(resp["ok"], true);
+        assert_eq!(resp["data"]["armed"], false);
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn websocket_arm_then_command_round_trip_succeeds() {
+        let dir = tempdir();
+        let server = test_server(dir.path());
+        let listener =
+            GatewayServer::<MockBackend, PassthroughEnforcer>::bind_tcp(([127, 0, 0, 1], 0))
+                .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server_handle = tokio::spawn(Arc::clone(&server).serve_ws(listener));
+
+        let (ws_stream, _resp) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}"))
+            .await
+            .unwrap();
+        let (mut write_half, mut read_half) = ws_stream.split();
+
+        write_half
+            .send(Message::Text(r#"{"cmd":"arm"}"#.into()))
+            .await
+            .unwrap();
+        let arm_resp: serde_json::Value =
+            serde_json::from_str(&as_text(read_half.next().await.unwrap().unwrap())).unwrap();
+        assert_eq!(arm_resp["ok"], true);
+
+        write_half
+            .send(Message::Text(
+                r#"{"cmd":"command","joint":"knee","torque_nm":1.0}"#.into(),
+            ))
+            .await
+            .unwrap();
+        let cmd_resp: serde_json::Value =
+            serde_json::from_str(&as_text(read_half.next().await.unwrap().unwrap())).unwrap();
+        assert_eq!(cmd_resp["ok"], true);
+
+        server_handle.abort();
+    }
+
+    fn as_text(msg: Message) -> String {
+        match msg {
+            Message::Text(t) => t.to_string(),
+            other => panic!("expected a text message, got {other:?}"),
+        }
+    }
+
     fn tempdir() -> TempDir {
         TempDir::new()
     }
@@ -364,16 +494,21 @@ mod tests {
         /// directory name exceeds a Unix domain socket's `SUN_LEN`
         /// limit (around 104 bytes) -- a real failure this test suite
         /// hit, not a hypothetical one.
+        ///
+        /// Uniqueness comes from a process-wide atomic counter, not a
+        /// timestamp: this test binary runs many `#[tokio::test]`s
+        /// concurrently on separate threads of the SAME process, and a
+        /// coarse system clock can hand two threads the identical
+        /// nanosecond reading, which another real failure this suite
+        /// hit traced back to two tests silently sharing one tempdir
+        /// (and so one `trip.jsonl` file) and corrupting each other's
+        /// state. A counter can't collide the way a clock reading can.
         fn new() -> Self {
-            let path = std::path::PathBuf::from("/tmp").join(format!(
-                "hgw-{}-{:x}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-                    % 0xFFFFFF
-            ));
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static COUNTER: AtomicU64 = AtomicU64::new(0);
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path =
+                std::path::PathBuf::from("/tmp").join(format!("hgw-{}-{n}", std::process::id()));
             std::fs::create_dir_all(&path).unwrap();
             TempDir { path }
         }

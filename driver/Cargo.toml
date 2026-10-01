@@ -8,6 +8,8 @@ thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "io-util", "macros"] }
+tokio-tungstenite = "0.24"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 
 # Pinned per the sprint plan's own risk mitigation ("motorbridge changes
 # its API or stalls -> Pin a version"). RobStride is a "Reuse" target
