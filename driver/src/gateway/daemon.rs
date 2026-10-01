@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crate::backend::{Backend, Command, MotorId};
+use crate::backend::{Backend, Command, Feedback, MotorId};
 
 use super::trip_log::now_unix_ms;
 use super::types::{EnforceAction, Enforcer, FaultPolicy, JointLimits, TripLogEntry};
@@ -69,6 +69,24 @@ impl<B: Backend, E: Enforcer> GatewayDaemon<B, E> {
 
     pub fn is_armed(&self) -> bool {
         self.armed
+    }
+
+    pub fn joint_names(&self) -> Vec<String> {
+        self.joints.keys().cloned().collect()
+    }
+
+    /// Latest feedback for one joint, for the status/state-stream API.
+    /// Does not require the daemon to be armed -- reading feedback is
+    /// always safe, unlike sending a command.
+    pub fn feedback(&mut self, joint_name: &str) -> Result<Feedback, GatewayError> {
+        let motor_id = self
+            .joints
+            .get(joint_name)
+            .ok_or_else(|| GatewayError::UnknownJoint(joint_name.to_string()))?
+            .motor_id;
+        self.backend
+            .feedback(motor_id)
+            .map_err(|e| GatewayError::Backend(e.to_string()))
     }
 
     /// Enables every registered joint via the Backend's verified-enable
@@ -384,5 +402,22 @@ mod tests {
             Instant::now(),
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn feedback_works_without_arming() {
+        let mut daemon = daemon_with_one_joint();
+        let result = daemon.feedback("knee");
+        assert!(result.is_ok(), "feedback should not require armed state");
+    }
+
+    #[test]
+    fn feedback_on_unknown_joint_is_rejected() {
+        let mut daemon = daemon_with_one_joint();
+        let result = daemon.feedback("no_such_joint");
+        assert_eq!(
+            result.err(),
+            Some(GatewayError::UnknownJoint("no_such_joint".to_string()))
+        );
     }
 }

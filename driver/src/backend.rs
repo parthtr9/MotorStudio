@@ -10,6 +10,8 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 /// Identifies one motor on one bus. Wraps the raw CAN arbitration ID
 /// component the family uses to address a motor -- NOT a CAN frame ID
 /// (which may also encode a comm-type/function code alongside this).
@@ -51,7 +53,7 @@ pub enum ControlMode {
 /// for the motor's current `ControlMode` are ignored by the backend, not
 /// an error -- the gateway's `enforce` layer decides what's legal to send,
 /// this struct just carries it.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Command {
     pub position_rad: Option<f64>,
     pub velocity_rad_s: Option<f64>,
@@ -64,7 +66,7 @@ pub struct Command {
 }
 
 /// One motor's feedback at a point in time. All fields SI.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Feedback {
     pub position_rad: Option<f64>,
     pub velocity_rad_s: Option<f64>,
@@ -76,7 +78,7 @@ pub struct Feedback {
 /// Raw fault bits as reported by the motor. This trait does not interpret
 /// bit meanings -- that mapping is family-specific and lives in the
 /// profile (`profiles/<family>/*.yaml`'s fault-bit tables), not in Rust.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct FaultBits(pub u32);
 
 impl FaultBits {

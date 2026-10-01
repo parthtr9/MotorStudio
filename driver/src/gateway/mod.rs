@@ -1,8 +1,10 @@
 //! The gateway: sole writer to any CAN bus (per root `CLAUDE.md`), owning
 //! arming, enforcement, the watchdog, and the trip log. `daemon` holds
-//! the core state machine (arm/disarm/command-gating/watchdog); the
-//! network transport on top of it (WebSocket/Unix-socket API) is not
-//! built yet -- see `daemon`'s module doc.
+//! the core state machine (arm/disarm/command-gating/watchdog); `server`
+//! is the Unix-socket transport on top of it (one request per line, see
+//! `protocol`). A WebSocket transport is not built yet -- it would
+//! reuse `server::GatewayServer::dispatch` unchanged, only the framing
+//! differs.
 //!
 //! `enforce/` (the directory alongside this file) is deliberately left
 //! with no `mod.rs` and is NOT declared as a module here. See
@@ -19,12 +21,15 @@
 
 pub mod arm;
 pub mod daemon;
+pub mod protocol;
+pub mod server;
 pub mod trip_log;
 pub mod types;
 
 pub use arm::{ArmCheckResult, ArmReport, run_arm_sequence};
 pub use daemon::{GatewayDaemon, GatewayError};
-pub use trip_log::{TripLog, now_unix_ms};
+pub use server::GatewayServer;
+pub use trip_log::{TripLog, now_unix_ms, read_entries};
 pub use types::{
     BusLimits, EffectiveLimits, EnforceAction, EnforceDecision, Enforcer, FaultPolicy, JointLimits,
     TripLogEntry,
