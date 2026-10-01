@@ -23,3 +23,7 @@ studio/.turbo/
 # Build/test artifacts
 *.log
 limits.json
+
+# Vendor manuals (copyrighted, not ours to redistribute). Derived,
+# page-cited extracts live in profiles/robstride/_extracts/ instead.
+/Robstride/
