@@ -29,6 +29,19 @@ class ControlMode(str, Enum):
     torque = "torque"
 
 
+class FaultPolicy(str, Enum):
+    """Watchdog/fault behavior for this joint. Values match the Rust
+    gateway's FaultPolicy (driver/src/gateway/types.rs) exactly -- both
+    sides serialize as these snake_case strings in limits.json. Default
+    is "damp" per the sprint plan: "Leg robots need a slow sag, not a
+    drop."
+    """
+
+    damp = "damp"
+    zero_torque = "zero_torque"
+    hold = "hold"
+
+
 class ActuatorRating(BaseModel):
     """Datasheet ratings for one motor model. Fields not confirmed against a
     manual or bench measurement must be listed in `unverified`.
@@ -104,6 +117,7 @@ class Joint(BaseModel):
     control_mode: ControlMode
     transmission_ratio: float = Field(default=1.0, gt=0)
     limits: JointLimitOverride = Field(default_factory=JointLimitOverride)
+    fault_policy: FaultPolicy = FaultPolicy.damp
 
 
 class Pose(BaseModel):

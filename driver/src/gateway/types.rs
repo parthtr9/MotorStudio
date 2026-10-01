@@ -146,6 +146,48 @@ mod tests {
         assert_eq!(limits, round_tripped);
     }
 
+    /// Pins the exact JSON shape `spec/harness/limits_compiler.py`
+    /// (Python side) produces for a one-joint, one-bus robot, verified
+    /// against this crate by hand on 2026-10-01 (`harness compile` run
+    /// against `spec/tests/fixtures/good/robot.yaml`). The two sides
+    /// have no shared schema generator, so this is the regression test
+    /// that catches the Rust struct and the Python compiler's output
+    /// drifting apart silently. If this starts failing because the
+    /// Python side's output legitimately changed shape, update both
+    /// this literal and the comment above together, not just one side.
+    #[test]
+    fn deserializes_real_python_compiler_output_shape() {
+        let json = r#"{
+            "schema_version": 0,
+            "joints": [
+                {
+                    "joint": "knee_joint",
+                    "min_position_rad": -1.5,
+                    "max_position_rad": 1.5,
+                    "max_velocity_rad_s": 20.0,
+                    "max_torque_nm": 18.0,
+                    "continuous_current_a": 8.0,
+                    "fault_policy": "damp",
+                    "max_winding_temp_degc": null
+                }
+            ],
+            "buses": [
+                {
+                    "bus": "can0",
+                    "supply_current_limit_a": 40.0,
+                    "regen_current_limit_a": 10.0
+                }
+            ],
+            "command_rate_limit_hz": 1000.0
+        }"#;
+        let limits: EffectiveLimits = serde_json::from_str(json).unwrap();
+        assert_eq!(limits.joints.len(), 1);
+        assert_eq!(limits.joints[0].joint, "knee_joint");
+        assert_eq!(limits.joints[0].fault_policy, FaultPolicy::Damp);
+        assert_eq!(limits.joints[0].max_winding_temp_degc, None);
+        assert_eq!(limits.buses[0].regen_current_limit_a, Some(10.0));
+    }
+
     #[test]
     fn trip_log_entry_serializes_as_one_json_object_per_line() {
         let entry = TripLogEntry {

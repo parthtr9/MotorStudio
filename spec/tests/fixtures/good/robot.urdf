@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!--
+Minimal single-joint URDF for M2 check fixtures, not a real robot:
+just enough structure (one revolute joint, one massive link) to exercise
+the hold-torque check's gravity math against a known physical setup.
+knee_link's mass (1 kg) and COM offset (0.3 m along local +X) give a
+worst-case (horizontal) gravity torque of about 2.94 Nm at the knee
+joint, comfortably under the fixture actuators' 9 Nm continuous rating.
+-->
+<robot name="m2_fixture_robot">
+  <link name="base_link"/>
+  <link name="knee_link">
+    <inertial>
+      <origin xyz="0.3 0 0"/>
+      <mass value="1.0"/>
+    </inertial>
+  </link>
+  <joint name="knee" type="revolute">
+    <parent link="base_link"/>
+    <child link="knee_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.5" upper="1.5" velocity="20" effort="20"/>
+  </joint>
+</robot>
