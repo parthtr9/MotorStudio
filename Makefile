@@ -13,6 +13,9 @@ endif
 ifneq (,$(wildcard studio/package.json))
 	cd studio && pnpm install && pnpm test
 endif
+	cd mcp && python3 -m venv .venv --upgrade-deps >/dev/null 2>&1 || true
+	cd mcp && .venv/bin/pip install -q -e . -e ../spec pytest
+	cd mcp && .venv/bin/python -m pytest -q
 
 # make gates M=2
 gates:

@@ -19,8 +19,9 @@ from enum import Enum
 
 from pydantic import BaseModel, ValidationError
 
+from harness.gravity import required_holding_torques
 from harness.schema import RobotSpec
-from harness.urdf import Urdf, gravity_torque_nm
+from harness.urdf import Urdf
 
 
 class Severity(str, Enum):
@@ -101,46 +102,25 @@ def check_hold_torque(spec: RobotSpec, urdf: Urdf) -> list[Finding]:
     against `ActuatorRating.continuous_torque_nm`.
     """
     findings: list[Finding] = []
-    actuators_by_name = {a.name: a for a in spec.actuators}
-    joints_by_name = {j.name: j for j in spec.joints}
-
-    for pose in spec.poses:
-        joint_values = {
-            joints_by_name[name].urdf_joint: value
-            for name, value in pose.joint_positions.items()
-            if name in joints_by_name
-        }
-        for joint_name in pose.joint_positions:
-            joint = joints_by_name.get(joint_name)
-            if joint is None:
-                continue
-            actuator = actuators_by_name.get(joint.actuator)
-            if actuator is None:
-                continue
-            try:
-                urdf_torque = gravity_torque_nm(urdf, joint_values, joint.urdf_joint)
-            except ValueError:
-                continue  # URDF joint not found; schema-level check elsewhere
-            required_motor_torque = abs(urdf_torque) / joint.transmission_ratio
-            continuous = actuator.rating.continuous_torque_nm
-            if required_motor_torque > continuous:
-                findings.append(
-                    Finding(
-                        code="E_HOLD_TORQUE_EXCEEDED",
-                        joint=joint.name,
-                        severity=Severity.error,
-                        message=(
-                            f"pose {pose.name!r} requires {required_motor_torque:.2f} Nm "
-                            f"at {joint.name!r}, exceeding {actuator.name!r}'s continuous "
-                            f"rating of {continuous:.2f} Nm"
-                        ),
-                        fix=(
-                            "Reduce the load/reach at this pose, pick a stronger actuator, "
-                            "add mechanical support, or confirm (via bench test) a higher "
-                            "continuous rating and mark it unverified until validated."
-                        ),
-                    )
+    for row in required_holding_torques(spec, urdf):
+        if row["required_torque_nm"] > row["continuous_torque_nm"]:
+            findings.append(
+                Finding(
+                    code="E_HOLD_TORQUE_EXCEEDED",
+                    joint=row["joint"],
+                    severity=Severity.error,
+                    message=(
+                        f"pose {row['pose']!r} requires {row['required_torque_nm']:.2f} Nm "
+                        f"at {row['joint']!r}, exceeding {row['actuator']!r}'s continuous "
+                        f"rating of {row['continuous_torque_nm']:.2f} Nm"
+                    ),
+                    fix=(
+                        "Reduce the load/reach at this pose, pick a stronger actuator, "
+                        "add mechanical support, or confirm (via bench test) a higher "
+                        "continuous rating and mark it unverified until validated."
+                    ),
                 )
+            )
     return findings
 
 

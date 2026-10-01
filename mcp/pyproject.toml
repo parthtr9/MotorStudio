@@ -1,0 +1,20 @@
+[project]
+name = "harness-mcp"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=2.2,<3",
+]
+
+[project.scripts]
+harness-mcp = "mcp_server.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["mcp_server*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

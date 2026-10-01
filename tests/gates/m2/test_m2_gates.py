@@ -23,14 +23,7 @@ a number.
 from pathlib import Path
 
 import pytest
-from harness.checks import (
-    check_bus_load,
-    check_hold_torque,
-    check_supply_regen_budget,
-    check_unverified_ratings,
-    findings_from_validation_error,
-)
-from harness.loader import SpecLoadError, load_robot
+from harness.loader import run_default_checks
 
 FIXTURES = Path(__file__).resolve().parents[3] / "spec" / "tests" / "fixtures"
 
@@ -50,16 +43,7 @@ BROKEN_CASES = {
 
 
 def _run_checks(spec_path: Path) -> list[dict]:
-    try:
-        spec, urdf = load_robot(spec_path)
-    except SpecLoadError as e:
-        return [f.model_dump() for f in findings_from_validation_error(e.validation_error)]
-    findings = []
-    findings += check_hold_torque(spec, urdf)
-    findings += check_bus_load(spec)
-    findings += check_supply_regen_budget(spec)
-    findings += check_unverified_ratings(spec)
-    return [f.model_dump() for f in findings]
+    return [f.model_dump() for f in run_default_checks(spec_path)]
 
 
 @pytest.mark.parametrize("fixture_name,expected_code", BROKEN_CASES.items())

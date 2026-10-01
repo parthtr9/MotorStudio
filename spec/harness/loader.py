@@ -9,6 +9,14 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from harness.checks import (
+    Finding,
+    check_bus_load,
+    check_hold_torque,
+    check_supply_regen_budget,
+    check_unverified_ratings,
+    findings_from_validation_error,
+)
 from harness.schema import RobotSpec
 from harness.urdf import Urdf
 
@@ -38,6 +46,31 @@ def load_robot(spec_path: str | Path) -> tuple[RobotSpec, Urdf]:
     urdf_path = spec_path.parent / spec.urdf_path
     urdf = Urdf.from_path(urdf_path)
     return spec, urdf
+
+
+def run_default_checks(spec_path: str | Path) -> list[Finding]:
+    """Loads the spec and runs every default check -- shared by
+    `harness check` (cli.py) and the MCP server's `check_spec` tool, so
+    the two don't duplicate the "which checks run by default" decision.
+    Schema/load errors short-circuit the semantic checks, which can't
+    run meaningfully against a spec that didn't even parse.
+
+    check_profile_availability is NOT included here yet: no real
+    per-family profile exists on disk for any actuator this project
+    currently targets, so wiring it in would flag every config,
+    including well-formed ones. Revisit once real profiles land.
+    """
+    try:
+        spec, urdf = load_robot(spec_path)
+    except SpecLoadError as e:
+        return findings_from_validation_error(e.validation_error)
+
+    findings: list[Finding] = []
+    findings += check_hold_torque(spec, urdf)
+    findings += check_bus_load(spec)
+    findings += check_supply_regen_budget(spec)
+    findings += check_unverified_ratings(spec)
+    return findings
 
 
 def scan_available_profiles(profiles_root: str | Path) -> set[tuple[str, str, str]]:

@@ -4,15 +4,9 @@ import sys
 
 import click
 
-from harness.checks import (
-    check_bus_load,
-    check_hold_torque,
-    check_supply_regen_budget,
-    check_unverified_ratings,
-    findings_from_validation_error,
-)
+from harness.checks import findings_from_validation_error
 from harness.limits_compiler import compile_effective_limits
-from harness.loader import SpecLoadError, load_robot
+from harness.loader import SpecLoadError, load_robot, run_default_checks
 from harness.profile_loader import load_profile
 
 
@@ -21,38 +15,12 @@ def main() -> None:
     pass
 
 
-def _run_all_checks(spec_path: str) -> list[dict]:
-    """Loads the spec and runs every default check, returning
-    JSON-serializable Finding dicts. Schema/load errors short-circuit
-    the semantic checks -- they can't run meaningfully against a spec
-    that didn't even parse.
-
-    check_profile_availability is NOT included here yet: no real
-    per-family profile exists on disk for any actuator this project
-    currently targets (see profiles/robstride/OPEN_QUESTIONS.md), so
-    wiring it in now would make every config -- including a
-    well-formed one -- emit a profile-missing warning. Revisit once
-    real profiles land.
-    """
-    try:
-        spec, urdf = load_robot(spec_path)
-    except SpecLoadError as e:
-        return [f.model_dump(mode="json") for f in findings_from_validation_error(e.validation_error)]
-
-    findings = []
-    findings += check_hold_torque(spec, urdf)
-    findings += check_bus_load(spec)
-    findings += check_supply_regen_budget(spec)
-    findings += check_unverified_ratings(spec)
-    return [f.model_dump(mode="json") for f in findings]
-
-
 @main.command()
 @click.argument("spec_path")
 @click.option("--json", "json_output", is_flag=True, help="JSON output instead of human-readable.")
 def check(spec_path: str, json_output: bool) -> None:
     """Run static checks against a robot_hw.yaml."""
-    findings = _run_all_checks(spec_path)
+    findings = [f.model_dump(mode="json") for f in run_default_checks(spec_path)]
     if json_output:
         click.echo(json_module.dumps(findings, indent=2))
     else:

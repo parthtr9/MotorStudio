@@ -30,8 +30,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo fmt --check
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+
+  mcp:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e . -e ../spec pytest ruff
+      - run: ruff check mcp_server tests
+      - run: python -m pytest -q
 
   studio:
     runs-on: ubuntu-24.04
