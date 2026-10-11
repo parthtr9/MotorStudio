@@ -1,4 +1,4 @@
-import { GatewayClient, type Feedback } from "./gatewayClient";
+import { GatewayClient, type Feedback, type TripLogEntry } from "./gatewayClient";
 import "./style.css";
 
 /**
@@ -23,6 +23,7 @@ app.innerHTML = `
   <header>
     <h1>Actuator Harness Studio</h1>
     <div id="connection-status">connecting...</div>
+    <div id="armed-status" class="unknown">armed: unknown</div>
     <div id="controls">
       <button id="arm-btn">Arm</button>
       <button id="disarm-btn">Disarm</button>
@@ -36,12 +37,33 @@ app.innerHTML = `
 `;
 
 const connectionStatusEl = document.querySelector<HTMLDivElement>("#connection-status")!;
+const armedStatusEl = document.querySelector<HTMLDivElement>("#armed-status")!;
 const jointsEl = document.querySelector<HTMLDivElement>("#joints")!;
 const tripLogListEl = document.querySelector<HTMLUListElement>("#trip-log-list")!;
 const armBtn = document.querySelector<HTMLButtonElement>("#arm-btn")!;
 const disarmBtn = document.querySelector<HTMLButtonElement>("#disarm-btn")!;
 
-function jointPanelHtml(joint: string): string {
+/** Exported for main.test.ts -- pure HTML/formatting, no DOM dependency. */
+export function renderArmedStatus(armed: boolean | undefined): void {
+  armedStatusEl.textContent = armed === undefined ? "armed: unknown" : `armed: ${armed}`;
+  armedStatusEl.className = armed === undefined ? "unknown" : armed ? "armed" : "disarmed";
+}
+
+/** `action` is either a plain string (unit EnforceAction variants) or a
+ * single-key object (WatchdogFault(FaultPolicy)) -- see
+ * gatewayClient.ts's TripLogEntry doc. */
+export function tripLogActionText(action: string | Record<string, string>): string {
+  if (typeof action === "string") return action;
+  const [key, value] = Object.entries(action)[0];
+  return `${key}(${value})`;
+}
+
+export function tripLogEntryHtml(entry: TripLogEntry): string {
+  const time = new Date(entry.time_unix_ms).toLocaleTimeString();
+  return `<li>${time} -- ${entry.joint}: ${entry.limit} (commanded ${entry.commanded}, allowed ${entry.allowed}, action ${tripLogActionText(entry.action)})</li>`;
+}
+
+export function jointPanelHtml(joint: string): string {
   return `
     <article class="joint-panel" data-joint="${joint}">
       <h3>${joint}</h3>
@@ -61,7 +83,7 @@ function jointPanelHtml(joint: string): string {
   `;
 }
 
-function renderFeedback(joint: string, feedback: Feedback): void {
+export function renderFeedback(joint: string, feedback: Feedback): void {
   const panel = jointsEl.querySelector(`[data-joint="${joint}"]`);
   if (!panel) return;
   const set = (field: string, value: number | undefined) => {
@@ -91,6 +113,7 @@ async function main(): Promise<void> {
   const statusResp = await client.status();
   const joints = statusResp.data?.joints ?? [];
   jointsEl.innerHTML = joints.map(jointPanelHtml).join("");
+  renderArmedStatus(statusResp.data?.armed);
 
   for (const joint of joints) {
     const panel = jointsEl.querySelector(`[data-joint="${joint}"]`)!;
@@ -107,10 +130,12 @@ async function main(): Promise<void> {
   armBtn.addEventListener("click", async () => {
     const resp = await client.arm();
     if (!resp.ok) console.error(`arm rejected: ${resp.error}`);
+    else renderArmedStatus(true);
   });
   disarmBtn.addEventListener("click", async () => {
     const resp = await client.disarm();
     if (!resp.ok) console.error(`disarm rejected: ${resp.error}`);
+    else renderArmedStatus(false);
   });
 
   async function pollFeedback(): Promise<void> {
@@ -123,12 +148,7 @@ async function main(): Promise<void> {
   async function pollTripLog(): Promise<void> {
     const resp = await client.tripLog(20);
     if (!resp.ok || !resp.data) return;
-    tripLogListEl.innerHTML = resp.data
-      .map(
-        (entry) =>
-          `<li>${new Date(entry.time_unix_ms).toLocaleTimeString()} -- ${entry.joint}: ${entry.limit} (commanded ${entry.commanded}, allowed ${entry.allowed})</li>`,
-      )
-      .join("");
+    tripLogListEl.innerHTML = resp.data.map(tripLogEntryHtml).join("");
   }
 
   setInterval(() => {
