@@ -7,7 +7,7 @@ import click
 from harness.checks import findings_from_validation_error
 from harness.limits_compiler import compile_effective_limits
 from harness.loader import SpecLoadError, load_robot, run_default_checks
-from harness.profile_loader import load_profile
+from harness.profile_loader import ProfileLoadError, load_profile
 
 
 @click.group()
@@ -60,7 +60,13 @@ def profile_lint(profile_path: str) -> None:
     (pydantic ValidationError) -- that is the check. This command then
     reports how much of the family is documented vs still open.
     """
-    profile = load_profile(profile_path)
+    try:
+        profile = load_profile(profile_path)
+    except ProfileLoadError as e:
+        for err in e.validation_error.errors():
+            loc = ".".join(str(part) for part in err.get("loc", ()))
+            click.echo(f"ERROR {loc}: {err.get('msg', '')}", err=True)
+        sys.exit(1)
     summary = profile.coverage_summary()
     click.echo(f"{summary['family']}/{summary['model']}_{summary['firmware']}")
     click.echo(f"  frames documented: {summary['frames_documented']}")
