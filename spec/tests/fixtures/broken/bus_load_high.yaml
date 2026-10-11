@@ -1,0 +1,41 @@
+# Expected: W_BUS_LOAD_HIGH (not E_BUS_OVERLOAD -- bitrate is tuned to
+# land in check_bus_load's (warn_fraction, 1.0] band, not over 100%).
+# One joint at 1000 Hz, 2 frames/cycle, 128 bits/frame (see check_bus_load's
+# docstring) = 256000 bps needed. At 300000 bps that's ~85% load: above
+# the 70% warn ceiling, under the 100% overload line.
+schema_version: 0
+name: m2-fixture-broken
+urdf_path: ../good/robot.urdf
+buses:
+- name: can0
+  interface: vcan
+  bitrate: 300000
+  supply_voltage_v: 48.0
+  supply_current_limit_a: 40.0
+  regen_current_limit_a: 10.0
+actuators:
+- name: knee-motor
+  rating:
+    family: cubemars
+    model: FIXTURE-X1
+    continuous_torque_nm: 9.0
+    peak_torque_nm: 18.0
+    max_velocity_rad_s: 30.0
+    continuous_current_a: 8.0
+    peak_current_a: 20.0
+    torque_constant_nm_per_a: 1.0
+  profile:
+    family: cubemars
+    model: FIXTURE-X1
+    firmware: '0.0'
+joints:
+- name: knee_joint
+  urdf_joint: knee
+  actuator: knee-motor
+  bus: can0
+  can_id: 1
+  control_mode: mit
+poses:
+- name: standing
+  joint_positions:
+    knee_joint: 0.0
