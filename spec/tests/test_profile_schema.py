@@ -25,6 +25,7 @@ def _minimal_profile_dict() -> dict:
                         "name": "position",
                         "byte_offset": 0,
                         "byte_length": 2,
+                        "byte_order": "big",
                         "scale": 0.01,
                         "unit": "rad",
                         "manual_ref": "Fake Manual sec 1.1",
@@ -33,6 +34,7 @@ def _minimal_profile_dict() -> dict:
                         "name": "velocity",
                         "byte_offset": 2,
                         "byte_length": 2,
+                        "byte_order": "big",
                         "scale": 0.1,
                         "unit": "rad/s",
                         "manual_ref": "Fake Manual sec 1.1",
@@ -57,8 +59,20 @@ def test_frame_field_without_manual_ref_rejected():
             name="position",
             byte_offset=0,
             byte_length=2,
+            byte_order="big",
             unit="rad",
             manual_ref="",
+        )
+
+
+def test_frame_field_without_byte_order_rejected():
+    with pytest.raises(ValidationError):
+        FrameField(
+            name="position",
+            byte_offset=0,
+            byte_length=2,
+            unit="rad",
+            manual_ref="Fake Manual sec 1.1",
         )
 
 
@@ -68,6 +82,7 @@ def test_field_overflowing_frame_rejected():
             name="position",
             byte_offset=6,
             byte_length=4,
+            byte_order="big",
             unit="rad",
             manual_ref="Fake Manual sec 1.1",
         )

@@ -22,6 +22,11 @@ class Direction(str, Enum):
     rx = "rx"  # motor -> host
 
 
+class ByteOrder(str, Enum):
+    big = "big"
+    little = "little"
+
+
 class FrameField(BaseModel):
     """One field inside a CAN frame's data bytes.
 
@@ -29,6 +34,18 @@ class FrameField(BaseModel):
     manual (e.g. "RobStride CAN Protocol v1.2 sec 4.3 table 7"). It is not
     a free-text description -- it must be checkable by a human against the
     source document.
+
+    `byte_order` has no default on purpose: this project has already
+    wrapped two real families (RobStride, Damiao -- see
+    driver/src/backends/) whose own vendor crates disagree on it (RobStride
+    packs big-endian; Damiao's pos/vel/torque command frames are
+    little-endian), so defaulting to either would just be a different
+    guess. The raw integer this field decodes to is always read as
+    unsigned over `byte_order`; `scale`/`offset` are what map that into a
+    signed physical range (the same affine pattern both real families
+    already use -- see motor_vendor_robstride's/motor_vendor_damiao's own
+    uint_to_float-style conversions), so no separate signed/two's-
+    complement flag is needed here.
     """
 
     model_config = {"extra": "forbid"}
@@ -36,6 +53,7 @@ class FrameField(BaseModel):
     name: str
     byte_offset: int = Field(ge=0)
     byte_length: int = Field(ge=1, le=8)
+    byte_order: ByteOrder  # required, no default -- see this class's doc
     scale: float = 1.0
     offset: float = 0.0
     unit: str  # SI unit per root CLAUDE.md: rad, rad/s, Nm, A, V, degC, s, or "raw"/"enum"
