@@ -9,15 +9,16 @@
 //! of guessing that rule forbids.
 //!
 //! Backends:
-//! - `robstride`: wraps the `motorbridge` project's RobStride vendor
-//!   crate (git-pinned, see driver/Cargo.toml) -- RobStride is a
-//!   "Reuse" target per the sprint plan's feature evaluation.
-//! - `damiao`, `yaml_codec` (CubeMars MIT mode): not yet started.
+//! - `robstride`, `damiao`: wrap the `motorbridge` project's vendor
+//!   crates (git-pinned, see driver/Cargo.toml) -- both are "Reuse"
+//!   targets per the sprint plan's feature evaluation.
+//! - `yaml_codec` (CubeMars MIT mode): not yet started.
 //!
 //! A `mock` backend (test-only) exists so the `Backend` trait's contract
 //! -- especially verified-enable -- can be tested without any real
 //! protocol data at all.
 
+pub mod damiao;
 #[cfg(test)]
 pub mod mock;
 pub mod robstride;
