@@ -126,6 +126,68 @@ def test_duplicate_frame_names_rejected():
         ProtocolProfile.model_validate(d)
 
 
+def test_overlapping_fields_rejected_even_under_dlc_budget():
+    # offsets 0..2 and 1..3 total 4 bytes, well under dlc=8 -- the
+    # byte-budget check alone would miss that byte 1 belongs to both.
+    with pytest.raises(ValidationError):
+        FrameSpec(
+            name="cmd",
+            direction="tx",
+            can_id=0x100,
+            extended=False,
+            dlc=8,
+            fields=[
+                FrameField(
+                    name="a",
+                    byte_offset=0,
+                    byte_length=2,
+                    byte_order="big",
+                    unit="raw",
+                    manual_ref="Fake Manual sec 1.1",
+                ),
+                FrameField(
+                    name="b",
+                    byte_offset=1,
+                    byte_length=2,
+                    byte_order="big",
+                    unit="raw",
+                    manual_ref="Fake Manual sec 1.1",
+                ),
+            ],
+            manual_ref="Fake Manual sec 1.1",
+        )
+
+
+def test_adjacent_non_overlapping_fields_accepted():
+    fs = FrameSpec(
+        name="cmd",
+        direction="tx",
+        can_id=0x100,
+        extended=False,
+        dlc=4,
+        fields=[
+            FrameField(
+                name="a",
+                byte_offset=0,
+                byte_length=2,
+                byte_order="big",
+                unit="raw",
+                manual_ref="Fake Manual sec 1.1",
+            ),
+            FrameField(
+                name="b",
+                byte_offset=2,
+                byte_length=2,
+                byte_order="big",
+                unit="raw",
+                manual_ref="Fake Manual sec 1.1",
+            ),
+        ],
+        manual_ref="Fake Manual sec 1.1",
+    )
+    assert len(fs.fields) == 2
+
+
 def test_duplicate_field_names_rejected():
     d = _minimal_profile_dict()
     d["frames"][0]["fields"].append(dict(d["frames"][0]["fields"][0]))

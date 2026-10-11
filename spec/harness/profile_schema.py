@@ -100,6 +100,20 @@ class FrameSpec(BaseModel):
         names = [f.name for f in self.fields]
         if len(names) != len(set(names)):
             raise ValueError(f"frame {self.name!r}: duplicate field names")
+        # The total-bytes check above only catches overlap by accident
+        # (e.g. two fields using more bytes combined than dlc allows);
+        # it says nothing about two fields claiming the SAME byte, which
+        # fits under dlc just fine (e.g. offsets 0..2 and 1..3 total 4
+        # bytes, well under an 8-byte dlc, yet byte 1 belongs to both).
+        occupied: dict[int, str] = {}
+        for f in self.fields:
+            for byte in range(f.byte_offset, f.byte_offset + f.byte_length):
+                if byte in occupied:
+                    raise ValueError(
+                        f"frame {self.name!r}: fields {occupied[byte]!r} and {f.name!r} "
+                        f"both claim byte {byte}"
+                    )
+                occupied[byte] = f.name
         return self
 
 
