@@ -42,7 +42,7 @@ pub struct FieldCodec {
     pub offset: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CodecError {
     FieldOutOfFrame {
         byte_offset: usize,
@@ -53,6 +53,17 @@ pub enum CodecError {
         min: f64,
         max: f64,
     },
+    /// Two fields in the same `FrameCodec` both claim `byte`. The YAML
+    /// schema (`profile_schema.py`'s `FrameSpec`) now rejects this at
+    /// load time too, but this module doesn't go through that
+    /// validator -- `FrameCodec::new` can be called directly with
+    /// hand-built fields, so it checks for itself.
+    OverlappingFields {
+        a: String,
+        b: String,
+        byte: usize,
+    },
+    UnknownField(String),
 }
 
 impl FieldCodec {
@@ -151,6 +162,70 @@ impl FieldCodec {
         }
         self.write_raw(raw, frame);
         Ok(())
+    }
+}
+
+/// A named group of `FieldCodec`s sharing one 8-byte frame -- mirrors
+/// `profile_schema.py`'s `FrameSpec.fields`. Field order doesn't matter
+/// (each is independently addressed by its own byte range); what
+/// matters is that no two fields claim the same byte, checked once at
+/// construction rather than on every encode/decode.
+pub struct FrameCodec {
+    fields: Vec<(String, FieldCodec)>,
+}
+
+impl FrameCodec {
+    pub fn new(fields: Vec<(String, FieldCodec)>) -> Result<Self, CodecError> {
+        let mut occupied: std::collections::HashMap<usize, &str> = std::collections::HashMap::new();
+        for (name, field) in &fields {
+            for byte in field.byte_offset..field.byte_offset + field.byte_length {
+                if let Some(&existing) = occupied.get(&byte) {
+                    return Err(CodecError::OverlappingFields {
+                        a: existing.to_string(),
+                        b: name.clone(),
+                        byte,
+                    });
+                }
+                occupied.insert(byte, name.as_str());
+            }
+        }
+        Ok(FrameCodec { fields })
+    }
+
+    pub fn field_names(&self) -> impl Iterator<Item = &str> {
+        self.fields.iter().map(|(name, _)| name.as_str())
+    }
+
+    fn get(&self, name: &str) -> Result<&FieldCodec, CodecError> {
+        self.fields
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, f)| f)
+            .ok_or_else(|| CodecError::UnknownField(name.to_string()))
+    }
+
+    /// Decodes every field in this frame, keyed by name.
+    pub fn decode_all(
+        &self,
+        frame: &[u8; 8],
+    ) -> Result<std::collections::BTreeMap<String, f64>, CodecError> {
+        let mut out = std::collections::BTreeMap::new();
+        for (name, field) in &self.fields {
+            out.insert(name.clone(), field.decode(frame)?);
+        }
+        Ok(out)
+    }
+
+    /// Writes one named field's value into `frame`, leaving every other
+    /// field's bytes untouched -- callers build a multi-field command by
+    /// calling this once per field against the same buffer.
+    pub fn encode_field(
+        &self,
+        name: &str,
+        value: f64,
+        frame: &mut [u8; 8],
+    ) -> Result<(), CodecError> {
+        self.get(name)?.encode(value, frame)
     }
 }
 
@@ -333,5 +408,98 @@ mod tests {
         let mut frame = [0u8; 8];
         let result = f.encode(50.0, &mut frame);
         assert!(matches!(result, Err(CodecError::ValueOutOfRange { .. })));
+    }
+
+    fn mit_style_fields() -> Vec<(String, FieldCodec)> {
+        // Loosely shaped like a real MIT-mode command frame (position +
+        // velocity + torque in one 8-byte frame) -- made-up byte layout,
+        // not any real family's.
+        vec![
+            (
+                "position_rad".to_string(),
+                FieldCodec {
+                    byte_offset: 0,
+                    byte_length: 2,
+                    byte_order: ByteOrder::Big,
+                    scale: 25.0 / 65535.0,
+                    offset: -12.5,
+                },
+            ),
+            (
+                "velocity_rad_s".to_string(),
+                FieldCodec {
+                    byte_offset: 2,
+                    byte_length: 2,
+                    byte_order: ByteOrder::Big,
+                    scale: 60.0 / 65535.0,
+                    offset: -30.0,
+                },
+            ),
+            (
+                "torque_nm".to_string(),
+                FieldCodec {
+                    byte_offset: 4,
+                    byte_length: 2,
+                    byte_order: ByteOrder::Little,
+                    scale: 20.0 / 65535.0,
+                    offset: -10.0,
+                },
+            ),
+        ]
+    }
+
+    #[test]
+    fn frame_codec_round_trips_every_field_independently() {
+        let codec = FrameCodec::new(mit_style_fields()).unwrap();
+        let mut frame = [0u8; 8];
+        codec.encode_field("position_rad", 1.5, &mut frame).unwrap();
+        codec
+            .encode_field("velocity_rad_s", -2.0, &mut frame)
+            .unwrap();
+        codec.encode_field("torque_nm", 0.8, &mut frame).unwrap();
+
+        let decoded = codec.decode_all(&frame).unwrap();
+        assert!((decoded["position_rad"] - 1.5).abs() < 1e-3);
+        assert!((decoded["velocity_rad_s"] - (-2.0)).abs() < 1e-3);
+        assert!((decoded["torque_nm"] - 0.8).abs() < 1e-3);
+    }
+
+    #[test]
+    fn frame_codec_rejects_overlapping_fields_at_construction() {
+        let fields = vec![
+            (
+                "a".to_string(),
+                FieldCodec {
+                    byte_offset: 0,
+                    byte_length: 2,
+                    byte_order: ByteOrder::Big,
+                    scale: 1.0,
+                    offset: 0.0,
+                },
+            ),
+            (
+                "b".to_string(),
+                FieldCodec {
+                    byte_offset: 1,
+                    byte_length: 2,
+                    byte_order: ByteOrder::Big,
+                    scale: 1.0,
+                    offset: 0.0,
+                },
+            ),
+        ];
+        let result = FrameCodec::new(fields);
+        assert!(matches!(
+            result,
+            Err(CodecError::OverlappingFields { byte: 1, .. })
+        ));
+    }
+
+    #[test]
+    fn frame_codec_encode_field_rejects_unknown_name() {
+        let codec = FrameCodec::new(mit_style_fields()).unwrap();
+        let mut frame = [0u8; 8];
+        let result = codec.encode_field("not_a_field", 0.0, &mut frame);
+        assert!(matches!(result, Err(CodecError::UnknownField(name)) if name == "not_a_field"));
     }
 }
