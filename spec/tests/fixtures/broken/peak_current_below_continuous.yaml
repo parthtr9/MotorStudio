@@ -1,0 +1,41 @@
+# Expected: E_PEAK_BELOW_CONTINUOUS -- but via the peak_current_a branch
+# of ActuatorRating._peak_ge_continuous (schema.py), not the
+# peak_torque_nm branch peak_below_continuous.yaml already covers. Torque
+# fields are left valid (peak >= continuous) so only the current check
+# fires.
+schema_version: 0
+name: m2-fixture-broken
+urdf_path: ../good/robot.urdf
+buses:
+- name: can0
+  interface: vcan
+  bitrate: 1000000
+  supply_voltage_v: 48.0
+  supply_current_limit_a: 40.0
+  regen_current_limit_a: 10.0
+actuators:
+- name: knee-motor
+  rating:
+    family: cubemars
+    model: FIXTURE-X1
+    continuous_torque_nm: 9.0
+    peak_torque_nm: 18.0
+    max_velocity_rad_s: 30.0
+    continuous_current_a: 8.0
+    peak_current_a: 5.0
+    torque_constant_nm_per_a: 1.0
+  profile:
+    family: cubemars
+    model: FIXTURE-X1
+    firmware: '0.0'
+joints:
+- name: knee_joint
+  urdf_joint: knee
+  actuator: knee-motor
+  bus: can0
+  can_id: 1
+  control_mode: mit
+poses:
+- name: standing
+  joint_positions:
+    knee_joint: 0.0
